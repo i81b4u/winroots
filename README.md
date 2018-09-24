@@ -8,5 +8,5 @@ To replace all Microsoft Third-party Root Certification Authorities with certifi
 2. Execute (the commands in) gencabundle (wget, perl and openssl needed);
 3. Transfer ca-bundle.p7b to the Windows box;
 4. Start a powershell with administrator rights;
-5. Execute (the commands in) newrootswin;
+5. Execute (the commands in) newrootswin while making sure that ca-bundle.p7b is in the current directory;
 6. Done.
