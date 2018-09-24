@@ -1,0 +1,2 @@
+get-item Cert:\LocalMachine\AuthRoot\* | remove-item
+Import-Certificate -FilePath ca-bundle.p7b -CertStoreLocation Cert:\LocalMachine\AuthRoot
