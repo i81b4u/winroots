@@ -1,6 +1,8 @@
 # download latest mk-ca-bundle.pl
 wget https://raw.githubusercontent.com/curl/curl/master/lib/mk-ca-bundle.pl
+
 # start mk-ca-bundle.pl
 perl mk-ca-bundle.pl
+
 # convert generated ca-bundle.crt to ca-bundle.p7b
 openssl crl2pkcs7 -nocrl -certfile ca-bundle.crt -out ca-bundle.p7b
