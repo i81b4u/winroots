@@ -1,4 +1,5 @@
 # Remove all certificates from the Third-party Root Certification Authorities store
 get-item Cert:\LocalMachine\AuthRoot\* | remove-item
+
 # Import all certificates provided by ca-bundle.p7b to the Third-party Root Certification Authorities store
 Import-Certificate -FilePath ca-bundle.p7b -CertStoreLocation Cert:\LocalMachine\AuthRoot
