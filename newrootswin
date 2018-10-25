@@ -1,3 +1,6 @@
+# Back up all certificates from the Third-party Root Certification Authorities store
+Get-ChildItem -Path Cert:\LocalMachine\AuthRoot\* | Export-Certificate -FilePath thirdpartyrootsbackup.p7b -Type p7b
+
 # Remove all certificates from the Third-party Root Certification Authorities store
 get-item Cert:\LocalMachine\AuthRoot\* | remove-item
 
