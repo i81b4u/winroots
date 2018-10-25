@@ -1,8 +1,8 @@
 # Back up all certificates from the Third-party Root Certification Authorities store
-Get-ChildItem -Path Cert:\LocalMachine\AuthRoot\* | Export-Certificate -FilePath thirdpartyrootsbackup.p7b -Type p7b
+Get-Item -Path Cert:\LocalMachine\AuthRoot\* | Export-Certificate -FilePath thirdpartyrootsbackup.p7b -Type p7b
 
 # Remove all certificates from the Third-party Root Certification Authorities store
-get-item Cert:\LocalMachine\AuthRoot\* | remove-item
+Get-Item Cert:\LocalMachine\AuthRoot\* | Remove-Item
 
 # Import all certificates provided by ca-bundle.p7b to the Third-party Root Certification Authorities store
 Import-Certificate -FilePath ca-bundle.p7b -CertStoreLocation Cert:\LocalMachine\AuthRoot
