@@ -2,7 +2,7 @@
 
 `Update-MozillaAuthRoot.ps1` manages Windows' **Third-party Root Certification Authorities** store (`Cert:\LocalMachine\AuthRoot`) from curl's PEM conversion of Mozilla's CA store. This is a security-sensitive operation: certificates in this store can establish trust for TLS, code signing, Wi-Fi/VPN, proxy inspection, and internal services.
 
-The curl bundle is a conversion of Mozilla's store, not Mozilla's original trust database. In particular, it does not retain browser-specific constraints such as name constraints. See curl's [CA Extract documentation](https://curl.se/docs/caextract.html).
+The curl cacert bundle that is used by default is a conversion of Mozilla's store, not Mozilla's original trust database. In particular, it does not retain browser-specific constraints such as name constraints. See curl's [CA Extract documentation](https://curl.se/docs/caextract.html).
 
 ## Before you run it
 
@@ -26,7 +26,7 @@ Import missing Mozilla roots while retaining existing AuthRoot certificates. Thi
 .\Update-MozillaAuthRoot.ps1
 ```
 
-For higher assurance, pin an independently obtained digest:
+For higher assurance, pin an independently obtained digest for the default curl cacert bundle (https://curl.se/ca/cacert.pem.sha256):
 
 ```powershell
 .\Update-MozillaAuthRoot.ps1 -ExpectedSha256 '<trusted-64-character-SHA-256>'
