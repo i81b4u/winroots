@@ -7,7 +7,7 @@ The curl bundle is a conversion of Mozilla's store, not Mozilla's original trust
 ## Before you run it
 
 - Run it only from an elevated Windows PowerShell session.
-- Obtain the SHA-256 for the exact `cacert.pem` revision from a trusted, independent channel and pass it as `-ExpectedSha256`. HTTPS alone is not sufficient verification for a downloaded trust-anchor bundle.
+- For higher assurance, obtain the SHA-256 for the exact `cacert.pem` revision from a trusted, independent channel and pass it as `-ExpectedSha256`. A checksum fetched from the same HTTPS source is mainly an accidental-corruption check, not an independent trust boundary.
 - Start with `-WhatIf`; it downloads and validates the bundle, then removes its temporary file without creating a backup or changing the certificate store.
 - Prefer the default additive mode. `-Replace` removes every AuthRoot certificate not in the bundle, including roots installed by your organisation or management tooling.
 - Keep the generated backup somewhere durable. Test the recovery procedure in a non-production environment before depending on it.
@@ -20,21 +20,33 @@ First inspect the proposed change. The current curl CA Extract page publishes th
 .\Update-MozillaAuthRoot.ps1 -WhatIf
 ```
 
-Import missing Mozilla roots while retaining existing AuthRoot certificates:
+Import missing Mozilla roots while retaining existing AuthRoot certificates. This downloads the bundle over HTTPS and performs structural validation:
+
+```powershell
+.\Update-MozillaAuthRoot.ps1
+```
+
+For higher assurance, pin an independently obtained digest:
 
 ```powershell
 .\Update-MozillaAuthRoot.ps1 -ExpectedSha256 '<trusted-64-character-SHA-256>'
 ```
 
+To use a file you downloaded and reviewed yourself—for example, `cacert.pem` beside the script—pass `-BundlePath`. The script does not download or delete that file:
+
+```powershell
+.\Update-MozillaAuthRoot.ps1 -BundlePath .\cacert.pem -ExpectedSha256 '<trusted-64-character-SHA-256>'
+```
+
 Only when you explicitly intend to make AuthRoot match the bundle, replace certificates not in it:
 
 ```powershell
-.\Update-MozillaAuthRoot.ps1 -ExpectedSha256 '<trusted-64-character-SHA-256>' -Replace -Confirm
+.\Update-MozillaAuthRoot.ps1 -BundlePath .\cacert.pem -Replace -Confirm
 ```
 
-The script downloads the PEM over HTTPS, verifies its SHA-256 when supplied, rejects malformed/non-CA/duplicate entries and unexpectedly small bundles, creates a PKCS#7 backup before a real change, imports all missing Mozilla roots, verifies they are present, and only then removes non-Mozilla roots. Therefore an import failure retains the existing roots rather than clearing the store first.
+The script downloads the PEM over HTTPS (or uses `-BundlePath`), optionally verifies its SHA-256, rejects malformed/non-CA/duplicate entries and unexpectedly small bundles, creates a PKCS#7 backup before a real change, imports all missing Mozilla roots, verifies they are present, and only then removes non-Mozilla roots. Therefore an import failure retains the existing roots rather than clearing the store first.
 
-`-ExpectedSha256` is required for a real run. It is optional for `-WhatIf`, which is intentionally a dry run. Real changes have a high-impact, single confirmation prompt; use `-Confirm:$false` only in an appropriately controlled automation context. The backup defaults to `thirdpartyrootsbackup-<timestamp>.p7b` in the current directory.
+`-ExpectedSha256` is optional; when it is omitted, the script warns before proceeding. `-WhatIf` is intentionally a dry run. Real changes have a high-impact, single confirmation prompt; use `-Confirm:$false` only in an appropriately controlled automation context. The backup defaults to `thirdpartyrootsbackup-<timestamp>.p7b` in the current directory.
 
 ## Compatibility and test coverage
 
@@ -86,8 +98,9 @@ Before production use, test on a representative non-production machine:
 
 ## Parameters
 
-- `-SourceUrl` overrides the HTTPS bundle URL. Use only a controlled source.
-- `-ExpectedSha256` is the trusted, 64-character SHA-256 of the downloaded PEM; required unless using `-WhatIf`.
+- `-SourceUrl` overrides the HTTPS bundle URL. It is ignored when `-BundlePath` is used.
+- `-ExpectedSha256` is an optional trusted, 64-character SHA-256 of the PEM. It is recommended when the digest comes from an independent trusted channel.
+- `-BundlePath` uses an existing local PEM file instead of downloading one. The script never deletes this file.
 - `-MinimumCertificateCount` defaults to 100 and rejects suspiciously incomplete bundles.
 - `-BackupPath` chooses the PKCS#7 backup location.
 - `-DownloadPath` chooses the temporary PEM location; it is removed on every exit path where possible.

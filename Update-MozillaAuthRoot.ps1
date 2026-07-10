@@ -6,9 +6,12 @@ param(
     [ValidatePattern('^https://')]
     [string]$SourceUrl = 'https://curl.se/ca/cacert.pem',
 
-    # SHA-256 expected for the exact downloaded PEM. Obtain it independently.
+    # Optional SHA-256 expected for the exact PEM. Obtain it independently when possible.
     [ValidatePattern('^[A-Fa-f0-9]{64}$')]
     [string]$ExpectedSha256,
+
+    # Use an already-downloaded PEM bundle instead of downloading SourceUrl.
+    [string]$BundlePath,
 
     # Reject suspiciously incomplete bundles. curl's bundle has well over 100 roots.
     [ValidateRange(1, 1000)]
@@ -47,7 +50,7 @@ function Get-CertificatesFromPem {
     $endCount = [regex]::Matches($pem, '-----END CERTIFICATE-----').Count
 
     if ($matches.Count -eq 0 -or $matches.Count -ne $beginCount -or $matches.Count -ne $endCount) {
-        throw 'The downloaded PEM bundle contains no certificates or has malformed certificate delimiters.'
+        throw 'The PEM bundle contains no certificates or has malformed certificate delimiters.'
     }
 
     $certificates = New-Object Security.Cryptography.X509Certificates.X509Certificate2Collection
@@ -58,20 +61,20 @@ function Get-CertificatesFromPem {
 
         $basicConstraints = $certificate.Extensions | Where-Object { $_ -is [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension] } | Select-Object -First 1
         if (-not $basicConstraints -or -not $basicConstraints.CertificateAuthority) {
-            throw "Downloaded bundle contains a certificate that is not a CA: $($certificate.Subject)"
+            throw "PEM bundle contains a certificate that is not a CA: $($certificate.Subject)"
         }
 
         $keyUsage = $certificate.Extensions | Where-Object { $_ -is [Security.Cryptography.X509Certificates.X509KeyUsageExtension] } | Select-Object -First 1
         if ($keyUsage -and -not (($keyUsage.KeyUsages -band [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign) -ne 0)) {
-            throw "Downloaded bundle contains a CA without key-cert-sign usage: $($certificate.Subject)"
+            throw "PEM bundle contains a CA without key-cert-sign usage: $($certificate.Subject)"
         }
 
         if ($certificate.HasPrivateKey) {
-            throw "Downloaded bundle contains a certificate with a private key: $($certificate.Subject)"
+            throw "PEM bundle contains a certificate with a private key: $($certificate.Subject)"
         }
 
         if ($thumbprints.ContainsKey($certificate.Thumbprint)) {
-            throw "Downloaded bundle contains the same certificate more than once: $($certificate.Thumbprint)"
+            throw "PEM bundle contains the same certificate more than once: $($certificate.Thumbprint)"
         }
 
         $thumbprints[$certificate.Thumbprint] = $true
@@ -100,29 +103,42 @@ if (-not ([Enum]::GetNames([Net.SecurityProtocolType]) -contains 'Tls12')) {
     throw 'TLS 1.2 is not available in this PowerShell/.NET runtime.'
 }
 
-if (-not $ExpectedSha256 -and -not $WhatIfPreference) {
-    throw 'Pass -ExpectedSha256 with a trusted SHA-256 value for the exact PEM bundle. Use -WhatIf to inspect changes without modifying the store.'
-}
-
 # Make sure older Windows PowerShell/.NET defaults can still connect to curl.se.
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $store = $null
+$downloadedBundle = $false
 try {
-    Write-Verbose "Downloading Mozilla-derived CA bundle from $SourceUrl"
-    Invoke-WebRequest -Uri $SourceUrl -OutFile $DownloadPath -UseBasicParsing
+    if ($BundlePath) {
+        if (-not (Test-Path -LiteralPath $BundlePath -PathType Leaf)) {
+            throw "Bundle file does not exist: $BundlePath"
+        }
+        $bundlePathToImport = (Resolve-Path -LiteralPath $BundlePath).Path
+        Write-Verbose "Using local CA bundle from $bundlePathToImport"
+    }
+    else {
+        Write-Verbose "Downloading Mozilla-derived CA bundle from $SourceUrl"
+        Invoke-WebRequest -Uri $SourceUrl -OutFile $DownloadPath -UseBasicParsing
+        $bundlePathToImport = $DownloadPath
+        $downloadedBundle = $true
+    }
 
     # A PEM parser only proves the file is well-formed; bind it to an independently
     # obtained digest before it can supply new machine trust anchors.
-    $actualSha256 = (Get-FileHash -LiteralPath $DownloadPath -Algorithm SHA256).Hash
+    $actualSha256 = (Get-FileHash -LiteralPath $bundlePathToImport -Algorithm SHA256).Hash
     if ($ExpectedSha256 -and $actualSha256 -ne $ExpectedSha256.ToUpperInvariant()) {
-        throw "Downloaded bundle SHA-256 does not match -ExpectedSha256. Expected $($ExpectedSha256.ToUpperInvariant()), got $actualSha256."
+        throw "Bundle SHA-256 does not match -ExpectedSha256. Expected $($ExpectedSha256.ToUpperInvariant()), got $actualSha256."
     }
-    Write-Verbose "Verified downloaded bundle SHA-256: $actualSha256"
+    if ($ExpectedSha256) {
+        Write-Verbose "Verified bundle SHA-256: $actualSha256"
+    }
+    else {
+        Write-Warning "No -ExpectedSha256 was supplied. The bundle is protected by HTTPS/local-file controls and structural validation, but its digest was not independently pinned."
+    }
 
-    $mozillaRoots = Get-CertificatesFromPem -Path $DownloadPath
+    $mozillaRoots = Get-CertificatesFromPem -Path $bundlePathToImport
     if ($mozillaRoots.Count -lt $MinimumCertificateCount) {
-        throw "Downloaded bundle contains $($mozillaRoots.Count) certificate(s), below -MinimumCertificateCount ($MinimumCertificateCount)."
+        throw "PEM bundle contains $($mozillaRoots.Count) certificate(s), below -MinimumCertificateCount ($MinimumCertificateCount)."
     }
 
     $store = New-Object Security.Cryptography.X509Certificates.X509Store('AuthRoot', 'LocalMachine')
@@ -190,7 +206,7 @@ finally {
         $store.Close()
     }
 
-    if (Test-Path -LiteralPath $DownloadPath) {
+    if ($downloadedBundle -and (Test-Path -LiteralPath $DownloadPath)) {
         # Cleanup is intentional even for -WhatIf: the download itself is temporary.
         Remove-Item -LiteralPath $DownloadPath -Force -WhatIf:$false
     }
